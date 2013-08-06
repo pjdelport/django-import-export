@@ -1,10 +1,13 @@
 import os.path
 
+from django.test.client import RequestFactory
 from django.test.testcases import TestCase
 from django.contrib.auth.models import User
+from django.utils.http import urlencode
 from django.utils.translation import ugettext_lazy as _
 
 from core.admin import BookAdmin
+from core.models import Author, Book
 
 
 class ImportExportAdminIntegrationTest(TestCase):
@@ -69,3 +72,39 @@ class ImportExportAdminIntegrationTest(TestCase):
 
         self.assertContains(response, _('Export'))
         self.assertContains(response, _('Import'))
+
+
+class ExportMixinTest(TestCase):
+    """
+    Test `ExportMixin`.
+    """
+
+    def setUp(self):
+        self.factory = RequestFactory()
+        self.book_admin = BookAdmin(Book, None)  # None for admin site
+
+        self.author1 = Author.objects.create(name='Author 1')
+        self.author2 = Author.objects.create(name='Author 2')
+        self.book1 = Book.objects.create(name='Book 1', author=self.author1)
+        self.book2 = Book.objects.create(name='Book 2', author=self.author2)
+
+    def test_get_export_queryset_all(self):
+        """
+        `get_export_queryset()` returns all objects by default.
+        """
+        request = self.factory.post('/admin/core/book/export/')
+        self.assertQuerysetEqual(
+            self.book_admin.get_export_queryset(request),
+            ['<Book: Book 1>', '<Book: Book 2>'],
+            ordered=False)
+
+    def test_get_export_queryset_filtered(self):
+        """
+        `get_export_queryset()` applies the changelist's filtering.
+        """
+        query = urlencode({'author__id__exact': self.author2.pk})
+        request = self.factory.post('/admin/core/book/export/?{0}'.format(query))
+        self.assertQuerysetEqual(
+            self.book_admin.get_export_queryset(request),
+            ['<Book: Book 2>'],
+            ordered=False)
